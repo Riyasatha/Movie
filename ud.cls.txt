@@ -1,0 +1,328 @@
+/* 
+Name: HNDSAMUserDefaultHandler  
+Requirement ID: 
+Description: Handler for UserDefault Trigger. 
+Version | Author-Email | Date       | Comment 
+1.0     | Ricardo Dias | 19.04.2016 | initial version 
+1.1     | Gaurav Ranna | 25.01.2017 | Implemented forecast functionality - foreCastRecordsShare
+1.2     | Jorge Reis | 11.02.2017   | Reviewed forecast functionality - foreCastRecordsShare
+*/
+
+public class HNDSAMUserDefaultHandler {
+
+ public static void afterInsert(Map < Id, SAM_UserDefault__c > newUserDefault) {
+
+  Set < Id > userIds = new Set < Id > ();
+  Set < Id > gousIds = new Set < Id > ();
+
+  try {
+   for (SAM_UserDefault__c userDefaults: newUserDefault.Values()) {
+    userIds.add(userDefaults.User__c);
+    gousIds.add(newUserDefault.get(userDefaults.Id).GOU__c);
+   }
+
+   List < User > usersToUpdateList = new List < User > ();
+   Map < Id, User > usersMap = PVDUserProvider.getUsersByIdMap(userIds);
+
+   System.debug('userIds: ' + userIds);
+   Map < Id, SAM_GOU__c > gouMap = PVDSAMGOUProvider.getGOUsByIdMap(gousIds);
+
+   if (!usersMap.isEmpty()) {
+    for (SAM_UserDefault__c userDefault: newUserDefault.Values()) {
+     if (usersMap.containsKey(userDefault.User__c)) {
+      usersMap.get(userDefault.User__c).DefaultGOU__c = gouMap.get(userDefault.GOU__c).Name;
+      usersMap.get(userDefault.User__c).DefaultSBU__c = gouMap.get(userDefault.GOU__c).SBU__r.Name;
+      usersToUpdateList.add(usersMap.get(userDefault.User__c));
+     }
+    }
+
+    System.debug('usersToUpdateList: ' + usersToUpdateList);
+    update usersToUpdateList;
+   }
+  } catch (System.DmlException dmle) {
+   System.debug(dmle.getDmlMessage(0));
+  }
+
+
+  //Manual sharing for ForecastBU
+  //ForecastAccessBU__c objABU;
+  for (SAM_UserDefault__c userDefault: newUserDefault.Values()) {
+
+   if (userDefault.ForecastAccessBU__c != null) {
+
+    //ForecastAccessBU__c Lookup
+    // list SAM_UserDefault__c (SAM_UserDefault__c.GOU__c)
+
+
+   }
+  }
+ }
+
+ public static void afterUpdate(Map < Id, SAM_UserDefault__c > oldUserDefault, Map < Id, SAM_UserDefault__c > newUserDefault) {
+
+  Set < Id > changedIds = new Set < Id > ();
+  Set < Id > changedGOUIds = new Set < Id > ();
+  try {
+   for (SAM_UserDefault__c userDefaults: oldUserDefault.Values()) {
+    if (userDefaults.GOU__c != newUserDefault.get(userDefaults.Id).GOU__c) {
+     changedIds.add(userDefaults.User__c);
+     changedGOUIds.add(newUserDefault.get(userDefaults.Id).GOU__c);
+    }
+   }
+
+   List < User > usersToUpdateList = new List < User > ();
+   Map < Id, User > usersMap = PVDUserProvider.getUsersByIdMap(changedIds);
+
+   System.debug('changedGOUs: ' + changedIds);
+   Map < Id, SAM_GOU__c > gouMap = PVDSAMGOUProvider.getGOUsByIdMap(changedGOUIds);
+
+   if (!usersMap.isEmpty()) {
+    for (SAM_UserDefault__c userDefault: newUserDefault.Values()) {
+     if (usersMap.containsKey(userDefault.User__c)) {
+      usersMap.get(userDefault.User__c).DefaultGOU__c = gouMap.get(userDefault.GOU__c).Name;
+      usersMap.get(userDefault.User__c).DefaultSBU__c = gouMap.get(userDefault.GOU__c).SBU__r.Name;
+      usersToUpdateList.add(usersMap.get(userDefault.User__c));
+     }
+    }
+
+    System.debug('usersToUpdateList: ' + usersToUpdateList);
+    update usersToUpdateList;
+   }
+  } catch (System.DmlException dmle) {
+   System.debug(dmle.getDmlMessage(0));
+  }
+
+ }
+ 
+ //Forecast functionality
+ public static void foreCastRecordsShare(map < Id, SAM_UserDefault__c > olds, list < SAM_UserDefault__c > newUserDefault) {  Map<String, String> delSetBUID = new Map<String, String> ();
+  Map<String, String> buSetBUID = new Map<String, String> ();
+  Map<String, String> buSetBULevel = new Map<String, String> ();
+  Map<String, String> delSetGOUID = new Map<String, String> ();
+  Map<String, String> buSetGOUID = new Map<String, String> ();
+  Map<String, String> buSetGOULevel = new Map<String, String> ();
+  Map<String, String> delSetSBUID = new Map<String, String> ();
+  Map<String, String> buSetSBUID = new Map<String, String> ();
+  Map<String, String> buSetSBULevel = new Map<String, String> ();
+  Map<String, String> delSetGroupID = new Map<String, String> ();
+  Map<String, String> buSetGroupLevel = new Map<String, String> ();
+
+  Set<String> delKeys = new Set<String>();
+
+  for (SAM_userdefault__C userDef: newUserDefault) {
+
+    // Insert or Group Level changed
+    if (olds==null || userDef.ForecastAccessGroupLevel__c != olds.get(userDef.id).ForecastAccessGroupLevel__c) {
+      
+      if(userDef.ForecastAccessGroupLevel__c=='Edit' || userDef.ForecastAccessGroupLevel__c=='Read') {
+        buSetGroupLevel.put(userDef.User__c, userDef.ForecastAccessGroupLevel__c);
+      }
+      
+      if(olds!=null && (olds.get(userDef.id).ForecastAccessGroupLevel__c=='Edit' 
+          || olds.get(userDef.id).ForecastAccessGroupLevel__c=='Read')) {
+        delSetGroupID.put(userDef.User__c, '');
+        delKeys.add(userDef.User__c+'|GROUP');
+      }
+    }
+
+    // Insert or Forecast SBU changed or SBU Level changed
+    if (olds==null || userDef.ForecastAccessSBU__c != olds.get(userDef.id).ForecastAccessSBU__c
+       || userDef.ForecastAccessSBULevel__c != olds.get(userDef.id).ForecastAccessSBULevel__c) {
+      
+      if(!String.IsEmpty(userDef.ForecastAccessSBU__c) &&
+        (userDef.ForecastAccessSBULevel__c=='Edit' || userDef.ForecastAccessBULevel__c=='Read')) {
+        buSetSBUID.put(userDef.User__c, userDef.ForecastAccessSBU__c);
+        buSetSBULevel.put(userDef.User__c, userDef.ForecastAccessSBULevel__c);
+        for(SAM_GOU__c obj : [select id from SAM_GOU__c where SBU__c =: userDef.ForecastAccessSBU__c]) {
+          buSetGOUID.put(userDef.User__c, obj.Id);
+          buSetGOULevel.put(userDef.User__c, userDef.ForecastAccessSBULevel__c);
+        }
+      }
+      
+      if(olds!=null && !String.IsEmpty(olds.get(userDef.id).ForecastAccessSBU__c)) {
+        delSetSBUID.put(userDef.User__c, olds.get(userDef.id).ForecastAccessSBU__c);
+        delKeys.add(userDef.User__c+'|SBU');
+      }
+    }    
+
+    // Insert or Forecast GOU changed or GOU Level changed
+   if (olds==null || userDef.ForecastAccessGOU__c != olds.get(userDef.id).ForecastAccessGOU__c
+       || userDef.ForecastAccessGOULevel__c != olds.get(userDef.id).ForecastAccessGOULevel__c) {
+      
+      if(!String.IsEmpty(userDef.ForecastAccessGOU__c) &&
+        (userDef.ForecastAccessGOULevel__c=='Edit' || userDef.ForecastAccessGOULevel__c=='Read')) {
+        buSetGOUID.put(userDef.User__c, userDef.ForecastAccessGOU__c);
+        buSetGOULevel.put(userDef.User__c, userDef.ForecastAccessGOULevel__c);        
+      }
+
+      if(olds!=null && !String.IsEmpty(olds.get(userDef.id).ForecastAccessGOU__c)) {
+        delSetGOUID.put(userDef.User__c, olds.get(userDef.id).ForecastAccessGOU__c);
+        delKeys.add(userDef.User__c+'|GOU');
+      }
+    }  
+
+    System.debug(buSetGOULevel+'--buSetGOUID--'+buSetGOUID);
+    // Insert or Forecast BU changed or BU Level changed
+   if (olds==null || userDef.ForecastAccessBU__c != olds.get(userDef.id).ForecastAccessBU__c
+       || userDef.ForecastAccessBULevel__c != olds.get(userDef.id).ForecastAccessBULevel__c) {
+      
+      if(!String.IsEmpty(userDef.ForecastAccessBU__c) &&
+        (userDef.ForecastAccessBULevel__c=='Edit' || userDef.ForecastAccessBULevel__c=='Read')) {
+        buSetBUID.put(userDef.User__c, userDef.ForecastAccessBU__c);
+        buSetBULevel.put(userDef.User__c, userDef.ForecastAccessBULevel__c);
+      }
+      
+      if(olds!=null && !String.IsEmpty(olds.get(userDef.id).ForecastAccessBU__c)) {
+        delSetBUID.put(userDef.User__c, olds.get(userDef.id).ForecastAccessBU__c);
+        delKeys.add(userDef.User__c+'|BU');
+      }
+    } 
+    
+  }
+
+  Map<String, String> fBUToShareMap = new Map<String, String>();
+  Map<String, SAM_ForecastBU__share> delFBuShare = new Map<String, SAM_ForecastBU__share>();
+  
+  System.debug('buSetBUID: ' + buSetBUID);
+  System.debug('delSetBUID: ' + delSetBUID);
+  System.debug('delKeys: ' + delKeys);
+
+  if (!buSetBUID.isEmpty() || !delSetBUID.isEmpty()) {
+    for (SAM_ForecastBU__c rec : [select Id,BU__C from SAM_ForecastBU__c 
+                                        where (BU__C in :buSetBUID.values() or BU__C in :delSetBUID.values())
+                                          and ForecastDate__c = THIS_MONTH 
+                                        order by ForecastDate__c desc]) {
+      if(!String.IsEmpty(rec.BU__c) && !fBUToShareMap.containsKey(rec.BU__c)) {
+        fBUToShareMap.put(rec.BU__c, rec.id);
+      }
+    }
+
+   // Delete  
+   System.debug('select share delSetBUID.KeySet: ' + delSetBUID.KeySet());
+   System.debug('select share delSetBUID.Values: ' + delSetBUID.Values());
+   
+   for (SAM_ForecastBU__share rec: [select ParentId, UserOrGroupId from SAM_ForecastBU__share
+                                    where UserOrGroupId in :delSetBUID.KeySet() and ParentId in :fBUToShareMap.values()]) {
+     if(delKeys.contains(rec.UserOrGroupId+'|BU')) {
+        delFBuShare.put(rec.UserOrGroupId+'|'+rec.Id, rec);
+     }
+   }
+  }
+  System.debug('fBUToShareMap: ' + fBUToShareMap);
+  System.debug('delFBuShare: ' + delFBuShare);
+
+  Map<String, String> fGOUToShareMap = new Map<String, String>();
+  Map<String, SAM_ForecastGOU__Share> delFGOUShare = new Map<String, SAM_ForecastGOU__Share>();
+
+  if (!buSetGOUID.isEmpty() || !delSetGOUID.isEmpty()) {
+    for (SAM_ForecastGOU__c rec : [select Id,GOU__C from SAM_ForecastGOU__c 
+                                        where GOU__C in :buSetGOUID.values() and ForecastDate__c = THIS_MONTH 
+                                        order by ForecastDate__c desc]) {
+      if(!String.IsEmpty(rec.GOU__C) && !fGOUToShareMap.containsKey(rec.GOU__C))
+        fGOUToShareMap.put(rec.GOU__C, rec.id);
+    }
+
+   for (SAM_ForecastGOU__Share rec: [select ParentId, UserOrGroupId from SAM_ForecastGOU__Share
+                                    where UserOrGroupId in :delSetGOUID.KeySet() and ParentId in :delSetGOUID.Values()]) {
+     if(delKeys.contains(rec.UserOrGroupId+'|GOU'))
+        delFGOUShare.put(rec.UserOrGroupId+'|'+rec.ParentId, rec);
+   }
+  }
+  System.debug('fGOUToShareMap: ' + fGOUToShareMap);
+  System.debug('delFGOUShare: ' + delFGOUShare);
+
+  Map<String, String> fSBUToShareMap = new Map<String, String>();
+  Map<String, SAM_ForecastSBU__Share> delFSBUShare = new Map<String, SAM_ForecastSBU__Share>();
+
+  if (!buSetSBUID.isEmpty() || !delSetSBUID.isEmpty()) {
+    for (SAM_ForecastSBU__c rec : [select Id,SBU__C from SAM_ForecastSBU__c 
+                                        where SBU__C in :buSetSBUID.values() and ForecastDate__c = THIS_MONTH 
+                                        order by ForecastDate__c desc]) {
+      if(!String.IsEmpty(rec.SBU__C) && !fSBUToShareMap.containsKey(rec.SBU__C))
+        fSBUToShareMap.put(rec.SBU__C, rec.id);
+    }
+
+   // Delete   
+   for (SAM_ForecastSBU__Share rec: [select ParentId, UserOrGroupId from SAM_ForecastSBU__Share
+                                    where UserOrGroupId in :delSetSBUID.KeySet() and ParentId in :delSetSBUID.Values()]) {
+     if(delKeys.contains(rec.UserOrGroupId+'|SBU'))
+        delFSBUShare.put(rec.UserOrGroupId+'|'+rec.ParentId, rec);
+   }
+  }
+  System.debug('fSBUToShareMap: ' + fSBUToShareMap);
+  System.debug('delFSBUShare: ' + delFSBUShare);
+
+  Map<String, String> fGroupToShareMap = new Map<String, String>();
+  Map<String, SAM_ForecastGroup__Share> delFGroupShare = new Map<String, SAM_ForecastGroup__Share>();
+
+  if (!buSetGroupLevel.isEmpty() || !delSetGroupID.isEmpty()) {
+    for (SAM_ForecastGroup__c rec : [select Id  from SAM_ForecastGroup__c 
+                                        where ForecastDate__c = THIS_MONTH 
+                                        order by ForecastDate__c desc]) {
+      if(!String.IsEmpty('GROUP') && !fGroupToShareMap.containsKey('GROUP'))
+        fGroupToShareMap.put('GROUP', rec.id);
+    }
+
+   // Delete   
+   for (SAM_ForecastGroup__Share rec: [select ParentId, UserOrGroupId from SAM_ForecastGroup__Share
+                                    where UserOrGroupId in :delSetGroupID.KeySet() and ParentId in :delSetGroupID.Values()]) {
+     if(delKeys.contains(rec.UserOrGroupId+'|GROUP'))
+        delFGroupShare.put(rec.UserOrGroupId+'|'+rec.ParentId, rec);
+   }
+  }
+  System.debug('fGroupToShareMap: ' + fGroupToShareMap);
+  System.debug('delFGroupShare: ' + delFGroupShare);
+
+  Database.delete(delFBUShare.values(),true);
+  Database.delete(delFGOUShare.values(),true);
+  Database.delete(delFSBUShare.values(),true);
+  Database.delete(delFGroupShare.values(),true);
+
+  List<SAM_ForecastBU__Share> fBUShareList = new List<SAM_ForecastBU__Share>();
+  for(String usr : buSetBUID.KeySet()) {
+    if (fBUToShareMap.containsKey(buSetBUID.get(usr))) {
+      fBUShareList.add(new SAM_ForecastBU__Share(ParentId = fBUToShareMap.get(buSetBUID.get(usr)), 
+                          RowCause = 'Manual', UserOrGroupId=usr, 
+                          AccessLevel = buSetBULevel.get(usr)));
+    }
+  }
+  System.debug('fBUShareList: ' + fBUShareList);
+
+  List<SAM_ForecastGOU__Share> fGOUShareList = new List<SAM_ForecastGOU__Share>();
+  for(String usr : buSetGOUID.KeySet()) {
+    if (fGOUToShareMap.containsKey(buSetGOUID.get(usr))) {
+      fGOUShareList.add(new SAM_ForecastGOU__Share(ParentId = fGOUToShareMap.get(buSetGOUID.get(usr)), 
+                          RowCause = 'Manual', UserOrGroupId=usr, 
+                          AccessLevel = buSetGOULevel.get(usr)));
+    }
+  }
+  System.debug('fGOUShareList: ' + fGOUShareList);
+
+  List<SAM_ForecastSBU__Share> fSBUShareList = new List<SAM_ForecastSBU__Share>();
+  for(String usr : buSetSBUID.KeySet()) {
+    if (fSBUToShareMap.containsKey(buSetSBUID.get(usr))) {
+      fSBUShareList.add(new SAM_ForecastSBU__Share(ParentId = fSBUToShareMap.get(buSetSBUID.get(usr)), 
+                          RowCause = 'Manual', UserOrGroupId=usr, 
+                          AccessLevel = buSetSBULevel.get(usr)));
+    }
+  }
+  System.debug('fSBUShareList: ' + fSBUShareList);
+
+  List<SAM_ForecastGroup__Share> fGroupShareList = new List<SAM_ForecastGroup__Share>();
+  for(String usr : buSetGroupLevel.KeySet()) {
+    if (fGroupToShareMap.containsKey('GROUP')) {
+      fGroupShareList.add(new SAM_ForecastGroup__Share(ParentId = fGroupToShareMap.get('GROUP'), 
+                          RowCause = 'Manual', UserOrGroupId=usr, 
+                          AccessLevel = buSetGroupLevel.get(usr)));
+    }
+  }
+  System.debug('fGroupShareList: ' + fGroupShareList);
+
+  Database.insert(fBUShareList, true);
+  Database.insert(fGOUShareList, true);
+  Database.insert(fSBUShareList, true);
+  Database.insert(fGroupShareList, true);
+
+ }
+
+}
